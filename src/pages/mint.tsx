@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
-import Countdown from "../components/Countdown";
 import { motion } from "framer-motion";
 import { ScaleLoader } from "react-spinners";
 import { ethers } from "ethers";
@@ -181,11 +180,11 @@ export default function Mint() {
 
   const getMintData = async () => {
     try {
-      if (!account || !AGENT_IDENTITY_CONTRACT_ADDR) {
+      if (!AGENT_IDENTITY_CONTRACT_ADDR) {
         return;
       }
       
-      // Get total supply
+      // Get total supply (doesn't require account)
       const counts = await AGENT_CONTRACT.totalSupply();
       setTotalSupply(Number(counts));
       console.log("Total Supply:", Number(counts));
@@ -194,15 +193,17 @@ export default function Mint() {
       const saleActive = await AGENT_CONTRACT.saleActive();
       console.log("Sale Active:", saleActive);
       
-      // Get minted count for current wallet
-      const mintedCount = await AGENT_CONTRACT.mintedByWallet(account);
-      setWalletMintedCount(Number(mintedCount));
-      console.log("Minted by wallet:", Number(mintedCount));
-      
-      // Get max per wallet
-      const maxPerWallet = await AGENT_CONTRACT.maxPerWallet();
-      setMaxMintCount(Number(maxPerWallet));
-      console.log("Max per wallet:", Number(maxPerWallet));
+      // Get minted count for current wallet (only if account exists)
+      if (account) {
+        const mintedCount = await AGENT_CONTRACT.mintedByWallet(account);
+        setWalletMintedCount(Number(mintedCount));
+        console.log("Minted by wallet:", Number(mintedCount));
+        
+        // Get max per wallet
+        const maxPerWallet = await AGENT_CONTRACT.maxPerWallet();
+        setMaxMintCount(Number(maxPerWallet));
+        console.log("Max per wallet:", Number(maxPerWallet));
+      }
       
     } catch (error) {
       console.error("Error fetching mint data:", error);
@@ -210,12 +211,18 @@ export default function Mint() {
   };
 
   useEffect(() => {
+    // Fetch data on component mount (for total supply)
+    getMintData();
+    const interval = setInterval(() => {
+      getMintData();
+    }, 60000); // 1 minute
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    // Update wallet-specific data when account changes
     if (account) {
       getMintData();
-      const interval = setInterval(() => {
-        getMintData();
-      }, 60000); // 1 minute
-      return () => clearInterval(interval);
     }
   }, [account]);
 
@@ -255,16 +262,6 @@ export default function Mint() {
               </div>
             </div>
             <div>
-              <div className="flex flex-col items-center justify-center w-full">
-                <Countdown
-                  endDateTime={168431040000} // 1684310400000 is the timestamp of start public mint
-                  onCanBreed={() => {
-                    setEndWhiteListState(true);
-                    setMaxMintCount(7);
-                  }}
-                  totalSupply={totalSupply}
-                />
-              </div>
               <div className="flex items-center justify-center w-full mt-10">
                 <h1 className="text-xl font-normal text-center text-white">
                   MIU Agent NFTs

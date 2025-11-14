@@ -12,7 +12,6 @@ import Collection from "./collection";
 import { Bounce } from "react-awesome-reveal";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import Countdown from "../components/Countdown";
 import AGENT_IDENTITY_ABI from "../../public/abis/AGENT_IDENTITY_ABI.json";
 import { AGENT_IDENTITY_CONTRACT_ADDR } from "../config";
 import { WindowWithEthereum } from "../types";
@@ -33,39 +32,6 @@ const Home: NextPage = () => {
   const { account } = useWeb3React();
   const [totalSupply, setTotalSupply] = useState<number>(0);
   const [whitelistMintActive, setWhitelistMintActive] = useState<boolean>(false);
-  const [mintLive, setMintLive] = useState<boolean>(false);
-
-  // Calculate 8 PM IST today
-  const getMintLiveTime = () => {
-    const now = new Date();
-    const today8PM = new Date();
-    today8PM.setHours(20, 0, 0, 0); // 8 PM today
-    
-    // Convert to IST (UTC+5:30)
-    const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
-    const utcTime = today8PM.getTime() + today8PM.getTimezoneOffset() * 60 * 1000;
-    const istTime = utcTime + istOffset;
-    
-    return istTime;
-  };
-
-  const mintLiveTimestamp = getMintLiveTime();
-
-  // Check if mint is already live
-  useEffect(() => {
-    const checkMintStatus = () => {
-      const now = Date.now();
-      if (now >= mintLiveTimestamp) {
-        setMintLive(true);
-      }
-    };
-
-    checkMintStatus();
-    // Check every second
-    const interval = setInterval(checkMintStatus, 1000);
-
-    return () => clearInterval(interval);
-  }, [mintLiveTimestamp]);
 
   const provider =
     typeof window !== "undefined" && (window as WindowWithEthereum).ethereum
@@ -122,37 +88,12 @@ const Home: NextPage = () => {
                 MIUs are cute aura-coded companions ready to vibe with you.
               </p>
               <div className="flex flex-col items-center justify-center gap-4 md:justify-start">
-                {/* Mint Button - Show based on timer */}
-                {mintLive ? (
-                  <Link href="/mint" passHref>
-                    <button className="w-full px-10 py-4 mt-5 font-bold text-black transition-all duration-300 bg-white rounded-md lg:w-auto hover:bg-gray-400 animate-pulse">
-                      🚀 Mint Now Live!
-                    </button>
-                  </Link>
-                ) : (
-                  <div className="w-full lg:w-auto mt-5">
-                    <button className="w-full px-10 py-4 font-bold text-gray-400 bg-gray-600 rounded-md cursor-not-allowed opacity-60">
-                      Mint Coming Soon...
-                    </button>
-                  </div>
-                )}
-
-                {/* Mint Countdown Timer */}
-                {!mintLive && (
-                  <div className="flex flex-col items-center justify-center md:items-start">
-                    <div className="px-6 py-3 bg-red-500 bg-opacity-20 backdrop-blur-sm border-[1px] border-red-400 rounded-lg">
-                      <h2 className="text-lg font-bold text-center text-red-400 mb-2">
-                        Mint Goes Live In:
-                      </h2>
-                      <Countdown
-                        endDateTime={mintLiveTimestamp}
-                        onCanBreed={() => setMintLive(true)}
-                        totalSupply={0}
-                        isMintTimer={true}
-                      />
-                    </div>
-                  </div>
-                )}
+                {/* Mint Button */}
+                <Link href="/mint" passHref>
+                  <button className="w-full px-10 py-4 mt-5 font-bold text-black transition-all duration-300 bg-white rounded-md lg:w-auto hover:bg-gray-400 animate-pulse">
+                    🚀 Mint Now
+                  </button>
+                </Link>
 
                 {/* Live Mint Counter */}
                 <div className="flex items-center justify-center md:justify-start">
