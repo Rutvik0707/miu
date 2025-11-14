@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import type { NextPage } from "next";
 import { useWeb3React } from "@web3-react/core";
 import { ethers } from "ethers";
@@ -31,32 +31,53 @@ const settings = {
 const Home: NextPage = () => {
   const { account } = useWeb3React();
   const [totalSupply, setTotalSupply] = useState<number>(0);
+  const [prevTotalSupply, setPrevTotalSupply] = useState<number>(0);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [whitelistMintActive, setWhitelistMintActive] = useState<boolean>(false);
 
-  const provider =
-    typeof window !== "undefined" && (window as WindowWithEthereum).ethereum
-      ? new ethers.providers.Web3Provider(
-          (window as WindowWithEthereum).ethereum
-        )
-      : null;
+  // Get provider for read-only calls
+  const getReadProvider = () => {
+    if (typeof window !== "undefined" && (window as WindowWithEthereum).ethereum) {
+      return new ethers.providers.Web3Provider((window as WindowWithEthereum).ethereum);
+    }
+    // Fallback to default provider for BASE network
+    return new ethers.providers.JsonRpcProvider("https://mainnet.base.org");
+  };
 
-  const getMintData = async () => {
+  // Create contract instance for read-only calls (works without wallet)
+  const AGENT_CONTRACT = useMemo(() => {
+    return new ethers.Contract(
+      AGENT_IDENTITY_CONTRACT_ADDR,
+      AGENT_IDENTITY_ABI,
+      getReadProvider()
+    );
+  }, []);
+
+  const getMintData = useCallback(async () => {
     try {
-      if (provider && AGENT_IDENTITY_CONTRACT_ADDR) {
-        const AGENT_CONTRACT = new ethers.Contract(
-          AGENT_IDENTITY_CONTRACT_ADDR,
-          AGENT_IDENTITY_ABI,
-          provider
-        );
+      if (AGENT_IDENTITY_CONTRACT_ADDR) {
         const counts = await AGENT_CONTRACT.totalSupply();
-        setTotalSupply(Number(counts));
+        const newCount = Number(counts);
+        
+        // If count changed, trigger animation
+        if (newCount !== totalSupply) {
+          setIsUpdating(true);
+          setPrevTotalSupply(totalSupply);
+          setTotalSupply(newCount);
+          
+          // Remove animation after 600ms
+          setTimeout(() => {
+            setIsUpdating(false);
+          }, 600);
+        }
+        
         const state = await AGENT_CONTRACT.whitelistMintActive();
         setWhitelistMintActive(state);
       }
     } catch (error) {
       console.log("Error fetching mint data:", error);
     }
-  };
+  }, [AGENT_CONTRACT, totalSupply]);
 
   useEffect(() => {
     getMintData();
@@ -64,7 +85,7 @@ const Home: NextPage = () => {
       getMintData();
     }, 30000); // Update every 30 seconds
     return () => clearInterval(interval);
-  }, [account]);
+  }, [getMintData]);
 
   return (
     <motion.section
@@ -98,7 +119,9 @@ const Home: NextPage = () => {
                 {/* Live Mint Counter */}
                 <div className="flex items-center justify-center md:justify-start">
                   <div className="px-6 py-3 bg-white bg-opacity-10 backdrop-blur-sm border-[1px] border-gray-400 rounded-lg">
-                    <h1 className="text-xl font-bold text-center text-white md:text-2xl">
+                    <h1 className={`text-xl font-bold text-center text-white md:text-2xl transition-all duration-500 ${
+                      isUpdating ? 'scale-110 text-green-400' : 'scale-100 text-white'
+                    }`}>
                       {totalSupply.toLocaleString()} / 10,000 Minted
                     </h1>
                   </div>

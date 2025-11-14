@@ -1,6 +1,6 @@
 import { min } from "moment";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
@@ -37,12 +37,23 @@ export default function Mint() {
   const { account } = useWeb3React();
   const [mintCount, setMintCount] = useState<number>(1);
   const [totalSupply, setTotalSupply] = useState<number>(0);
+  const [prevTotalSupply, setPrevTotalSupply] = useState<number>(0);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [whiteListCounts, setWhiteListCounts] = useState<number>(0);
   const [loadingState, setLoadingState] = useState<boolean>(false);
   const [whtieListMintState, setWhiteListMintState] = useState<boolean>(false);
   const [endWhiteListState, setEndWhiteListState] = useState<boolean>(false);
   const [maxMintCount, setMaxMintCount] = useState(10);
   const [walletMintedCount, setWalletMintedCount] = useState<number>(0);
+
+  // Get provider for read-only calls
+  const getReadProvider = () => {
+    if (typeof window !== "undefined" && (window as WindowWithEthereum).ethereum) {
+      return new ethers.providers.Web3Provider((window as WindowWithEthereum).ethereum);
+    }
+    // Fallback to default provider for BASE network
+    return new ethers.providers.JsonRpcProvider("https://mainnet.base.org");
+  };
 
   // Calculate remaining mints allowed for this wallet
   const remainingMints = Math.max(0, maxMintCount - walletMintedCount);
@@ -65,17 +76,31 @@ export default function Mint() {
       : null;
   const Signer = provider?.getSigner();
 
-  const AGENT_CONTRACT = new ethers.Contract(
-    AGENT_IDENTITY_CONTRACT_ADDR,
-    AGENT_IDENTITY_ABI,
-    Signer
-  );
+  // Create contract instance for read-only calls (works without wallet)
+  const AGENT_CONTRACT = useMemo(() => {
+    return new ethers.Contract(
+      AGENT_IDENTITY_CONTRACT_ADDR,
+      AGENT_IDENTITY_ABI,
+      getReadProvider()
+    );
+  }, []);
 
-  const USDC_CONTRACT = new ethers.Contract(
-    USDC_ADDRESS,
-    ERC20_ABI,
-    Signer
-  );
+  // Create contract instance for write calls (needs signer)
+  const AGENT_CONTRACT_SIGNER = useMemo(() => {
+    return new ethers.Contract(
+      AGENT_IDENTITY_CONTRACT_ADDR,
+      AGENT_IDENTITY_ABI,
+      Signer
+    );
+  }, [Signer]);
+
+  const USDC_CONTRACT = useMemo(() => {
+    return new ethers.Contract(
+      USDC_ADDRESS,
+      ERC20_ABI,
+      Signer
+    );
+  }, [Signer]);
 
   const handleMintFunc = async () => {
     if (!account) {
@@ -140,7 +165,7 @@ export default function Mint() {
       successAlert("Step 2/2: Minting your NFT(s)...");
       console.log("Calling publicMint with quantity:", mintCount);
       
-      const mintTx = await AGENT_CONTRACT.publicMint(mintCount, {
+      const mintTx = await AGENT_CONTRACT_SIGNER.publicMint(mintCount, {
         gasLimit: 500000 * mintCount, // Increased gas limit for safety
       });
 
@@ -178,7 +203,7 @@ export default function Mint() {
     }
   };
 
-  const getMintData = async () => {
+  const getMintData = useCallback(async () => {
     try {
       if (!AGENT_IDENTITY_CONTRACT_ADDR) {
         return;
@@ -186,8 +211,20 @@ export default function Mint() {
       
       // Get total supply (doesn't require account)
       const counts = await AGENT_CONTRACT.totalSupply();
-      setTotalSupply(Number(counts));
-      console.log("Total Supply:", Number(counts));
+      const newCount = Number(counts);
+      
+      // If count changed, trigger animation
+      if (newCount !== totalSupply) {
+        setIsUpdating(true);
+        setPrevTotalSupply(totalSupply);
+        setTotalSupply(newCount);
+        console.log("Total Supply:", newCount);
+        
+        // Remove animation after 600ms
+        setTimeout(() => {
+          setIsUpdating(false);
+        }, 600);
+      }
       
       // Check if sale is active
       const saleActive = await AGENT_CONTRACT.saleActive();
@@ -195,12 +232,12 @@ export default function Mint() {
       
       // Get minted count for current wallet (only if account exists)
       if (account) {
-        const mintedCount = await AGENT_CONTRACT.mintedByWallet(account);
+        const mintedCount = await AGENT_CONTRACT_SIGNER.mintedByWallet(account);
         setWalletMintedCount(Number(mintedCount));
         console.log("Minted by wallet:", Number(mintedCount));
         
         // Get max per wallet
-        const maxPerWallet = await AGENT_CONTRACT.maxPerWallet();
+        const maxPerWallet = await AGENT_CONTRACT_SIGNER.maxPerWallet();
         setMaxMintCount(Number(maxPerWallet));
         console.log("Max per wallet:", Number(maxPerWallet));
       }
@@ -208,7 +245,7 @@ export default function Mint() {
     } catch (error) {
       console.error("Error fetching mint data:", error);
     }
-  };
+  }, [AGENT_CONTRACT, AGENT_CONTRACT_SIGNER, account, totalSupply]);
 
   useEffect(() => {
     // Fetch data on component mount (for total supply)
@@ -217,14 +254,14 @@ export default function Mint() {
       getMintData();
     }, 60000); // 1 minute
     return () => clearInterval(interval);
-  }, []);
+  }, [getMintData]);
 
   useEffect(() => {
     // Update wallet-specific data when account changes
     if (account) {
       getMintData();
     }
-  }, [account]);
+  }, [account, getMintData]);
 
   return (
     <motion.section
@@ -305,7 +342,9 @@ export default function Mint() {
                 </div>
               </div>
               <div className="flex items-center justify-center w-full mt-5">
-                <h1 className="text-2xl font-bold text-center text-white">
+                <h1 className={`text-2xl font-bold text-center text-white transition-all duration-500 ${
+                  isUpdating ? 'scale-110 text-green-400' : 'scale-100 text-white'
+                }`}>
                   {totalSupply} / 10000
                 </h1>
               </div>
